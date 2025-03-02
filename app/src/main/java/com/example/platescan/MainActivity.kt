@@ -44,7 +44,6 @@ class MainActivity : ComponentActivity() {
         cameraExecutor = Executors.newSingleThreadExecutor()
 
         if (allPermissionsGranted()) {
-            // No llamamos a startCamera() aquí porque previewView aún no está inicializado
         } else {
             requestPermissions(REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
         }
@@ -154,13 +153,22 @@ class MainActivity : ComponentActivity() {
                 }
 
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                    Log.d(TAG, "Foto guardada en: ${output.savedUri}")
+                    val savedUri = output.savedUri?.toString() ?: "Desconocido"
+                    showToast("Foto guardada: $name\nUbicación: $savedUri")
+                    Log.d(TAG, "Foto guardada en: $savedUri")
                 }
             })
+    }
+
+    private fun showToast(message: String) {
+        runOnUiThread {
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         cameraExecutor.shutdown()
     }
+
 }
