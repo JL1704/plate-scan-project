@@ -11,7 +11,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.video.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,20 +25,16 @@ import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import androidx.camera.view.PreviewView
-import androidx.core.content.PermissionChecker
 
 class MainActivity : ComponentActivity() {
     private var imageCapture: ImageCapture? = null
-    private var videoCapture: VideoCapture<Recorder>? = null
-    private var recording: Recording? = null
     private lateinit var cameraExecutor: ExecutorService
 
     companion object {
         private const val TAG = "CameraXApp"
         private const val FILENAME_FORMAT = "yyyy-MM-dd-HH-mm-ss-SSS"
         private val REQUIRED_PERMISSIONS = arrayOf(
-            Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO
+            Manifest.permission.CAMERA
         )
         private const val REQUEST_CODE_PERMISSIONS = 10
     }
@@ -49,24 +44,23 @@ class MainActivity : ComponentActivity() {
         cameraExecutor = Executors.newSingleThreadExecutor()
 
         if (allPermissionsGranted()) {
-            // ✅ NO se llama a startCamera() aquí porque previewView no está inicializado aún
+            // No llamamos a startCamera() aquí porque previewView aún no está inicializado
         } else {
             requestPermissions(REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
         }
 
         setContent {
             CameraScreen(
-                onImageCapture = { takePhoto() },
-                onVideoCapture = { captureVideo() }
+                onImageCapture = { takePhoto() }
             )
         }
     }
 
     @Composable
-    fun CameraScreen(onImageCapture: () -> Unit, onVideoCapture: () -> Unit) {
+    fun CameraScreen(onImageCapture: () -> Unit) {
         val context = LocalContext.current
         val lifecycleOwner = rememberUpdatedState(LocalContext.current as ComponentActivity)
-        val previewView = remember { PreviewView(context) } // Crear PreviewView correctamente
+        val previewView = remember { PreviewView(context) }
 
         LaunchedEffect(Unit) {
             startCamera(previewView, lifecycleOwner.value)
@@ -87,10 +81,6 @@ class MainActivity : ComponentActivity() {
                 Button(onClick = onImageCapture) {
                     Text(text = "Tomar Foto")
                 }
-
-                /*Button(onClick = onVideoCapture) {
-                   Text(text = "Grabar Video")
-                }*/
             }
         }
     }
@@ -102,11 +92,9 @@ class MainActivity : ComponentActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
             if (grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                // ✅ En lugar de llamar a startCamera(), renderizamos nuevamente CameraScreen()
                 setContent {
                     CameraScreen(
-                        onImageCapture = { takePhoto() },
-                        onVideoCapture = { captureVideo() }
+                        onImageCapture = { takePhoto() }
                     )
                 }
             } else {
@@ -133,14 +121,11 @@ class MainActivity : ComponentActivity() {
 
             imageCapture = ImageCapture.Builder().build()
 
-            val recorder = Recorder.Builder().setQualitySelector(QualitySelector.from(Quality.HIGHEST)).build()
-            videoCapture = VideoCapture.withOutput(recorder)
-
             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
             try {
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, imageCapture, videoCapture)
+                cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, imageCapture)
             } catch (exc: Exception) {
                 Log.e(TAG, "Error al iniciar la cámara: ", exc)
             }
@@ -172,35 +157,6 @@ class MainActivity : ComponentActivity() {
                     Log.d(TAG, "Foto guardada en: ${output.savedUri}")
                 }
             })
-    }
-
-    private fun captureVideo() {
-        val videoCapture = videoCapture ?: return
-
-        val name = SimpleDateFormat(FILENAME_FORMAT, Locale.US)
-            .format(System.currentTimeMillis())
-
-        val contentValues = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-            put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
-        }
-
-        val outputOptions = MediaStoreOutputOptions.Builder(
-            contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-        ).build()
-
-        recording?.stop()
-        recording = videoCapture.output.prepareRecording(this, outputOptions)
-            .apply {
-                if (PermissionChecker.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO)
-                    == PackageManager.PERMISSION_GRANTED
-                ) withAudioEnabled()
-            }
-            .start(ContextCompat.getMainExecutor(this)) { event ->
-                if (event is VideoRecordEvent.Finalize) {
-                    Log.d(TAG, "Video guardado en: ${event.outputResults.outputUri}")
-                }
-            }
     }
 
     override fun onDestroy() {
